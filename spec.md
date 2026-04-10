@@ -11,6 +11,61 @@ Both modes share the same system prompt, routine definitions, and MCP routing. T
 
 ---
 
+## Architecture Decisions
+
+### Authentication
+All auth is handled by Claude's MCP session. No external secrets management needed. MCP servers (Gmail, Calendar, Slack, ClickUp) authenticate through Claude's hosted endpoints. Revisit if we add infrastructure that needs external credentials.
+
+### Scheduling Infrastructure
+Scheduled routines run via Claude's remote triggers/scheduled agents. No Lambda, no custom infra. This keeps MCP auth seamless since routines execute within Claude's ecosystem.
+
+### State Persistence
+- **Phase 1 (conversational)**: Local JSON files in `state/` directory. Claude Code has filesystem access.
+- **Phase 2 (scheduled)**: Remote storage TBD (S3 or ClickUp doc). Interface stays the same, just swap the backend.
+- **Retention by routine**:
+  - Daily briefing, decision queue, governance tracker: last run only (delta comparison)
+  - Weekly recap: 1 week lookback
+  - Stakeholder touchpoints: 60 days
+  - Daily priorities: 7 days (accountability tracking)
+  - Staff signals: 3 months (month-over-month trending)
+  - Budget snapshots: 12 months (MoM and YoY)
+
+### Error Handling
+When an MCP server fails (timeout, rate limit, auth expired):
+- Skip the failed section, note it as unavailable in the output
+- Use the last persisted state as fallback, clearly labeled as stale
+- Send a Slack DM noting which data source was unreachable
+
+### Conversational Routing
+- The LLM infers which MCP servers to query based on the ask
+- If uncertain, ask Ben which sources to check rather than guessing
+- Ben can expand a query mid-conversation ("check Slack too")
+
+### Cross-Routine Awareness
+- Decision Queue (8am) references the Daily Briefing (7am) when both run the same morning. Net-new items are called out; overlapping items reference the briefing rather than repeating in full. Some redundancy between routines is acceptable since they serve different purposes.
+
+### Write Actions (Phase 4)
+All write actions (sending emails, creating tasks, posting messages) require confirmation before executing. No auto-send.
+
+### Model Selection
+Model assigned per routine based on complexity:
+- **Opus**: Daily Briefing, Weekly Recap, Staff Reviews, Meeting Prep (synthesis-heavy, multi-source reasoning)
+- **Sonnet**: Decision Queue, Dev Goals Check-in, Stakeholder Pulse, Governance Tracker, Budget Review (structured data formatting)
+
+### Feedback Loop (Phase 5)
+- Mechanism: conversational commands ("that briefing was too long", "stop flagging X", "good briefing today")
+- Storage: local state file alongside routine state
+- Applied to: prompt tuning, sender tier adjustments, priority rules
+
+### GitHub MCP
+TODO. GitHub MCP is not yet available. Routines that reference GitHub data (Daily Briefing, Decision Queue, Weekly Recap, Staff Reviews) skip GitHub sections and note them as unavailable until this is resolved.
+
+### Security
+- System prompt contains org context (names, roles, priorities). Acceptable under Aptive's enterprise Claude agreement with Anthropic's data retention policies.
+- Scheduled output delivered via enterprise Slack DMs. Acceptable for sensitive content (performance reviews, budget data) given enterprise controls.
+
+---
+
 ## Skill Directory Structure
 
 ```
@@ -28,11 +83,10 @@ ai-chief-of-staff/
     budget-review.md
     meeting-prep.md
   scheduler/
-    config.yaml         # Cron schedule definitions
-    runner.ts           # Lambda/Node entry point
-    slack-delivery.ts   # Formats and sends to Slack DM
+    config.yaml         # Cron schedule definitions (for Claude remote triggers)
   state/
-    schema.sql          # Persistence schema for delta tracking
+    README.md           # State file format and retention docs
+    # JSON files written at runtime per routine (e.g., daily-briefing.json)
 ```
 
 ---
@@ -66,8 +120,7 @@ Ben is Head of Technology (CTO promotion in progress), owning Product, Engineeri
 - 6 Product Managers (report to Ashley)
 
 ### Key Stakeholders
-- Jon: CEO. Receives weekly bullet updates from Ben.
-- Dave: Ben's direct manager.
+- Jon: CEO. Ben's direct manager. Receives weekly bullet updates from Ben.
 - Tiffany Hagge: Board Chair (Citation). Conducted Ben's Q1 review.
 - Brett: Board, equity/MIP contact.
 
@@ -100,11 +153,11 @@ When processing a request, select the minimum set of MCP servers needed:
 | Google Calendar | `https://gcal.mcp.claude.com/mcp` | Schedule review, meeting prep, stakeholder touchpoint tracking, governance dates |
 | Slack | `https://mcp.slack.com/mcp` | @mentions, DMs, team channel signals, commitment tracking, delivery channel for scheduled output |
 | ClickUp | `https://mcp.clickup.com/mcp` | Task status, assignments, overdue items, sprint/velocity tracking, OKRs, governance action items |
-| GitHub | TBD | PR reviews, CI status, merge activity, engineering output signals |
+| GitHub | TBD (TODO) | PR reviews, CI status, merge activity, engineering output signals. Skipped until MCP available. |
 
 ### Routing Logic for Conversational Mode
 
-The skill should infer which servers to query based on the ask:
+The skill should infer which servers to query based on the ask. If uncertain which sources to check, ask Ben rather than guessing. Ben can expand a query mid-conversation ("check Slack too").
 
 | User says something like... | MCP servers to hit |
 |---|---|
@@ -117,7 +170,7 @@ The skill should infer which servers to query based on the ask:
 | "When did I last talk to Tiffany?" | Calendar + Gmail + Slack |
 | "Where's AWS spend?" | Gmail (invoices/alerts) + ClickUp (budget tasks) |
 | "Create a task for X" | ClickUp |
-| "Reply to Dave's email about Y" | Gmail |
+| "Reply to Jon's email about Y" | Gmail |
 
 ---
 
@@ -133,19 +186,21 @@ Each routine is defined with: trigger phrases (conversational), schedule (cron),
 
 **Schedule**: weekdays 7:00 AM MT
 
-**MCP servers**: Gmail, Calendar, Slack, ClickUp, GitHub
+**Model**: Opus
+
+**MCP servers**: Gmail, Calendar, Slack, ClickUp (GitHub TODO)
 
 **Data pulls**:
 - Calendar: today + tomorrow events
 - Gmail: unread/unreplied threads, last 24h
 - Slack: unread DMs and @mentions
 - ClickUp: status changes on watched/owned tasks (last 24h), overdue tasks across directs' teams
-- GitHub: open PRs requesting Ben's review, failed CI, notable merges (last 24h)
+- GitHub (TODO): open PRs requesting Ben's review, failed CI, notable merges (last 24h)
 
 **Processing**:
 - Flag calendar conflicts, back-to-backs with <15min prep gaps
 - Rank communications by sender tier:
-  - Tier 1: Jon, Dave, Tiffany, Brett (board/CEO)
+  - Tier 1: Jon, Tiffany, Brett (CEO/board)
   - Tier 2: Chase, Ashley, Oki, Mason (direct reports)
   - Tier 3: everyone else
 - Compare ClickUp state against yesterday's persisted snapshot for deltas
@@ -191,11 +246,15 @@ Each routine is defined with: trigger phrases (conversational), schedule (cron),
 
 **Schedule**: weekdays 8:00 AM MT
 
-**MCP servers**: Gmail, Slack, ClickUp, GitHub
+**Model**: Sonnet
+
+**Cross-routine**: When running after the Daily Briefing (same morning), reference items already surfaced in the briefing. Focus on net-new items and deeper decision context.
+
+**MCP servers**: Gmail, Slack, ClickUp (GitHub TODO)
 
 **Data pulls**:
 - ClickUp: tasks in blocked/waiting status where Ben is blocker or approver
-- GitHub: PRs awaiting Ben's review
+- GitHub (TODO): PRs awaiting Ben's review
 - Gmail: threads with explicit asks, no reply from Ben
 - Slack: DMs and @mentions with unanswered questions/requests
 
@@ -227,12 +286,14 @@ Each routine is defined with: trigger phrases (conversational), schedule (cron),
 
 **Schedule**: Friday 4:00 PM MT
 
-**MCP servers**: Gmail, Calendar, Slack, ClickUp, GitHub
+**Model**: Opus
+
+**MCP servers**: Gmail, Calendar, Slack, ClickUp (GitHub TODO)
 
 **Data pulls**:
 - ClickUp: tasks completed this week across Eng, Product, IT, Data
 - ClickUp: tasks planned but not completed
-- GitHub: merged PRs, releases/deploys
+- GitHub (TODO): merged PRs, releases/deploys
 - Calendar: meeting volume and distribution
 - Gmail + Slack: scan for new commitments made ("I'll", "we'll", "action item", "by Friday")
 
@@ -271,6 +332,8 @@ Each routine is defined with: trigger phrases (conversational), schedule (cron),
 **Conversational triggers**: "how am I tracking on my goals", "development goals", "how's Ashley tracking", "check on Ashley's deliverables", "board development areas"
 
 **Schedule**: Wednesday 9:00 AM MT
+
+**Model**: Sonnet
 
 **MCP servers**: ClickUp, Gmail, Slack, Calendar
 
@@ -311,9 +374,11 @@ Each routine is defined with: trigger phrases (conversational), schedule (cron),
 
 **Schedule**: Monday 9:00 AM MT
 
+**Model**: Sonnet
+
 **MCP servers**: Slack, Gmail, Calendar
 
-**Tracked stakeholders**: Jon, Dave, Tiffany, Brett, Chase, Ashley, Oki, Mason
+**Tracked stakeholders**: Jon, Tiffany, Brett, Chase, Ashley, Oki, Mason
 
 **Data pulls**:
 - Calendar: meetings with tracked stakeholders (last 14 days)
@@ -348,6 +413,8 @@ Each routine is defined with: trigger phrases (conversational), schedule (cron),
 **Conversational triggers**: "when's the next tech committee", "governance tracker", "ELT forum status", "is the deck ready for [meeting]"
 
 **Schedule**: Monday 8:30 AM MT
+
+**Model**: Sonnet
 
 **MCP servers**: Calendar, ClickUp, Gmail
 
@@ -390,13 +457,15 @@ Each routine is defined with: trigger phrases (conversational), schedule (cron),
 
 **Schedule**: 1st Monday of month (pulse), 1st day of quarter (deep review)
 
-**MCP servers**: ClickUp, GitHub, Slack, Calendar
+**Model**: Opus
+
+**MCP servers**: ClickUp, Slack, Calendar (GitHub TODO)
 
 **Direct reports tracked**: Chase, Ashley, Oki, Mason, 4 EMs, 6 PMs
 
 **Monthly pulse data**:
 - ClickUp: task completion per person (30 days vs. prior 30 days)
-- GitHub: PR volume, review turnaround (technical leads)
+- GitHub (TODO): PR volume, review turnaround (technical leads)
 - Slack: activity patterns
 - Calendar: 1:1 attendance
 
@@ -453,6 +522,8 @@ Each routine is defined with: trigger phrases (conversational), schedule (cron),
 
 **Schedule**: 1st Wednesday of month
 
+**Model**: Sonnet
+
 **MCP servers**: Gmail, ClickUp
 
 **Note on data gaps**: AWS spend and vendor costs are not natively in Gmail/Slack/ClickUp. Three paths:
@@ -473,7 +544,7 @@ Recommend starting with option 1 (CSV upload) for v1, then automating with optio
 - MoM comparison, flag >15% spikes per line item
 - Track Canopy consolidation against $150K target
 - Surface renewals/decisions in next 30-60 days
-- Draft one-page summary for Dave or CFO/COO
+- Draft one-page summary for Jon or CFO/COO
 
 **Output** (structured mode):
 ```
@@ -503,7 +574,9 @@ Recommend starting with option 1 (CSV upload) for v1, then automating with optio
 
 **Conversational triggers**: "prep me for my [time] meeting", "prep me for [meeting name]", "what should I know before my call with [person]", "meeting prep"
 
-**Schedule**: 30 minutes before any calendar event with Tier 1 attendees (Jon, Dave, Tiffany, Brett) or events tagged as key meetings
+**Schedule**: Manual only (conversational trigger). Automated scheduling (30min before Tier 1 meetings) is a future enhancement requiring calendar polling, deferred to a later phase.
+
+**Model**: Opus
 
 **MCP servers**: Calendar, ClickUp, Slack, Gmail
 
@@ -538,7 +611,7 @@ Recommend starting with option 1 (CSV upload) for v1, then automating with optio
 - [person] waiting on [thing] since [date]
 ```
 
-**Output** (conversational): Same info, tighter. "Your 2pm with Dave is about [X]. The main thing to raise is [Y]. He's been waiting on [Z] since Tuesday."
+**Output** (conversational): Same info, tighter. "Your 2pm with Jon is about [X]. The main thing to raise is [Y]. He's been waiting on [Z] since Tuesday."
 
 ---
 
@@ -606,15 +679,7 @@ schedules:
     delivery: slack_dm
     priority: medium
 
-  meeting_prep:
-    routine: meeting-prep
-    trigger: calendar_event
-    conditions:
-      - attendee_tier: 1
-      - tag: key_meeting
-    lead_time_minutes: 30
-    delivery: slack_dm
-    priority: high
+  # meeting_prep: manual only for now. Future: calendar polling, 30min before Tier 1 meetings.
 
 delivery:
   slack_dm:
@@ -626,159 +691,43 @@ delivery:
 
 ---
 
-## Scheduler Runner
+## Scheduler
 
-```typescript
-// scheduler/runner.ts
-// Lightweight Lambda/Node entry point
+Scheduled routines use Claude's remote triggers/scheduled agents. No Lambda or custom infrastructure. Each trigger references a routine name and delivers output via Slack MCP.
 
-import Anthropic from "@anthropic-ai/sdk";
-import { readFileSync } from "fs";
-import { sendSlackDM } from "./slack-delivery";
+The scheduler config (below) defines the cron expressions and is used to configure Claude remote triggers.
 
-const MCP_SERVERS = {
-  gmail: { type: "url", url: "https://gmail.mcp.claude.com/mcp", name: "gmail" },
-  calendar: { type: "url", url: "https://gcal.mcp.claude.com/mcp", name: "gcal" },
-  slack: { type: "url", url: "https://mcp.slack.com/mcp", name: "slack" },
-  clickup: { type: "url", url: "https://mcp.clickup.com/mcp", name: "clickup" },
-  // github: TBD
-};
+## State Persistence
 
-const ROUTINE_MCP_MAP: Record<string, string[]> = {
-  "daily-briefing": ["gmail", "calendar", "slack", "clickup"],
-  "decision-queue": ["gmail", "slack", "clickup"],
-  "weekly-recap": ["gmail", "calendar", "slack", "clickup"],
-  "dev-goals-checkin": ["clickup", "gmail", "slack", "calendar"],
-  "stakeholder-pulse": ["slack", "gmail", "calendar"],
-  "governance-tracker": ["calendar", "clickup", "gmail"],
-  "staff-reviews": ["clickup", "slack", "calendar"],
-  "budget-review": ["gmail", "clickup"],
-  "meeting-prep": ["calendar", "clickup", "slack", "gmail"],
-};
+State is stored as JSON files in `state/`, one per routine (e.g., `state/daily-briefing.json`). Each file contains the routine's last run output and any tracked data needed for delta comparison.
 
-interface ScheduledEvent {
-  routine: string;
-  mode?: string;
-  context?: Record<string, unknown>;
+### State file format
+
+```json
+{
+  "routine": "daily-briefing",
+  "last_run": "2026-04-10T07:00:00-06:00",
+  "data": { ... }
 }
-
-export async function handler(event: ScheduledEvent) {
-  const client = new Anthropic();
-
-  const systemPrompt = readFileSync("./system-prompt.md", "utf-8");
-  const routineSpec = readFileSync(`./routines/${event.routine}.md`, "utf-8");
-
-  const mcpServerKeys = ROUTINE_MCP_MAP[event.routine] || [];
-  const mcpServers = mcpServerKeys.map((key) => MCP_SERVERS[key]).filter(Boolean);
-
-  // Load previous state for delta tracking
-  const previousState = await loadState(event.routine);
-
-  const userMessage = buildRoutinePrompt(event.routine, event.mode, previousState, event.context);
-
-  const response = await client.messages.create({
-    model: "claude-sonnet-4-20250514",
-    max_tokens: 4096,
-    system: `${systemPrompt}\n\n## Active Routine\n\n${routineSpec}`,
-    messages: [{ role: "user", content: userMessage }],
-    // @ts-ignore -- MCP servers passed through
-    mcp_servers: mcpServers,
-  });
-
-  const output = response.content
-    .filter((block) => block.type === "text")
-    .map((block) => block.text)
-    .join("\n");
-
-  // Persist state for next run
-  await saveState(event.routine, extractState(output, event.routine));
-
-  // Deliver via Slack DM
-  await sendSlackDM({
-    content: output,
-    routine: event.routine,
-    linkToChat: true,
-  });
-
-  return { statusCode: 200, routine: event.routine };
-}
-
-function buildRoutinePrompt(
-  routine: string,
-  mode?: string,
-  previousState?: unknown,
-  context?: Record<string, unknown>
-): string {
-  const now = new Date().toLocaleString("en-US", { timeZone: "America/Denver" });
-  let prompt = `Run the ${routine} routine. Current time: ${now}.`;
-
-  if (mode) prompt += ` Mode: ${mode}.`;
-  if (previousState) prompt += `\n\nPrevious state:\n${JSON.stringify(previousState, null, 2)}`;
-  if (context) prompt += `\n\nAdditional context:\n${JSON.stringify(context, null, 2)}`;
-
-  prompt += "\n\nUse structured output format. Pull live data from all connected systems.";
-  return prompt;
-}
-
-// State persistence (implement with DynamoDB, SQLite, or S3)
-async function loadState(routine: string): Promise<unknown> { /* ... */ }
-async function saveState(routine: string, state: unknown): Promise<void> { /* ... */ }
-function extractState(output: string, routine: string): unknown { /* ... */ }
 ```
 
----
+### What each routine persists
 
-## State Persistence Schema
+| Routine | Persisted Data | Retention |
+|---------|---------------|-----------|
+| Daily Briefing | ClickUp task statuses, top 3 items | Last run |
+| Decision Queue | (none, derived from live data) | Last run |
+| Weekly Recap | (none, derived from live data) | 1 week |
+| Dev Goals Check-in | (none, derived from live data) | Last run |
+| Stakeholder Pulse | Touchpoint dates per stakeholder | 60 days |
+| Governance Tracker | Action item status | Last run |
+| Staff Reviews | Per-person signals (task velocity, activity) | 3 months |
+| Budget Review | Spend snapshots by category | 12 months |
+| Meeting Prep | (none, manual only) | N/A |
 
-```sql
--- state/schema.sql
--- Tracks routine state for delta comparisons across runs
+### Phase 2 migration
 
-CREATE TABLE routine_state (
-  routine_id TEXT NOT NULL,
-  run_date TEXT NOT NULL,
-  state_json TEXT NOT NULL,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (routine_id, run_date)
-);
-
--- Tracks daily priority items for accountability
-CREATE TABLE daily_priorities (
-  date TEXT NOT NULL,
-  priority_rank INTEGER NOT NULL,
-  description TEXT NOT NULL,
-  resolved BOOLEAN DEFAULT FALSE,
-  resolved_date TEXT,
-  PRIMARY KEY (date, priority_rank)
-);
-
--- Tracks stakeholder touchpoints for pulse routine
-CREATE TABLE stakeholder_touchpoints (
-  stakeholder TEXT NOT NULL,
-  contact_date TEXT NOT NULL,
-  channel TEXT NOT NULL,  -- email, slack, calendar
-  summary TEXT,
-  PRIMARY KEY (stakeholder, contact_date, channel)
-);
-
--- Tracks staff performance signals over time
-CREATE TABLE staff_signals (
-  person TEXT NOT NULL,
-  month TEXT NOT NULL,
-  signal_type TEXT NOT NULL,  -- clickup_velocity, pr_volume, slack_activity
-  value REAL,
-  PRIMARY KEY (person, month, signal_type)
-);
-
--- Tracks budget snapshots for MoM comparison
-CREATE TABLE budget_snapshots (
-  month TEXT NOT NULL,
-  category TEXT NOT NULL,  -- aws, saas, contractors, headcount
-  line_item TEXT,
-  amount REAL,
-  PRIMARY KEY (month, category, line_item)
-);
-```
+When scheduled mode goes live, state moves from local JSON to remote storage (S3 or ClickUp doc). The interface stays the same -- just swap the read/write backend.
 
 ---
 
@@ -798,7 +747,7 @@ sprint work.
 
 Also waiting:
 - Ashley sent a Slack DM Tuesday asking about the PM hiring req. No reply yet.
-- Dave emailed yesterday RE: Q2 budget headcount. Needs a number from you.
+- Jon emailed yesterday RE: Q2 budget headcount. Needs a number from you.
 - PR #342 on grove-api has been waiting for your review since last Thursday.
 
 Want me to draft responses for any of these?
@@ -861,29 +810,33 @@ if he needs support there.
 - System prompt + routine definitions as skill files
 - Wire up MCP servers (Gmail, Calendar, Slack, ClickUp)
 - Build conversational routing (infer which routine/data sources to use)
+- Local JSON state persistence for delta tracking
 - Test interactively via Claude Code / chat
-- No scheduler, no state persistence yet
 
 ### Phase 2: Scheduled push (week 3-4)
-- Scheduler runner (Lambda or Node cron)
-- Slack DM delivery
-- State persistence for delta tracking (daily priorities, ClickUp snapshots)
-- Daily Briefing, Decision Queue, and Meeting Prep on schedule
+- Claude remote triggers for scheduled routines
+- Slack DM delivery via Slack MCP
+- Migrate state from local JSON to remote storage (S3 or ClickUp doc)
+- Daily Briefing and Decision Queue on schedule
 
 ### Phase 3: Full routine coverage (week 5-6)
-- All nine routines active on schedule
+- All eight schedulable routines active (Meeting Prep stays manual)
 - Staff signal tracking over time
 - Budget CSV upload flow
-- Connect GitHub MCP
+- GitHub MCP integration (when available)
 
 ### Phase 4: Action mode (week 7-8)
-- "Draft a reply to..." (Gmail)
-- "Create a task for..." (ClickUp)
-- "Send this update to Jon" (Gmail or Slack)
-- "Remind me to..." (ClickUp or Calendar)
+- "Draft a reply to..." (Gmail) -- requires confirmation before send
+- "Create a task for..." (ClickUp) -- requires confirmation before create
+- "Send this update to Jon" (Gmail or Slack) -- requires confirmation before send
+- "Remind me to..." (ClickUp or Calendar) -- requires confirmation before create
 
 ### Phase 5: Learning loop (ongoing)
-- Feedback mechanism: Ben rates/corrects outputs
+- Feedback via conversational commands, stored in local state files
 - Prompt tuning based on feedback
 - Sender tier adjustments
 - Custom priority rules that emerge from usage patterns
+
+### Future enhancements (unscheduled)
+- Automated Meeting Prep: calendar polling, fire 30min before Tier 1 meetings
+- GitHub MCP: PR reviews, CI status, merge activity across all relevant routines
