@@ -1,0 +1,79 @@
+# Cron schedule definitions for Claude remote triggers (Phase 2)
+# Phase 1: reference only. These are not active until remote triggers are configured.
+
+timezone: America/Denver
+
+schedules:
+  daily_briefing:
+    routine: daily-briefing
+    cron: "0 7 * * 1-5"  # 7am weekdays
+    model: opus
+    delivery: slack_dm
+    priority: high
+
+  decision_queue:
+    routine: decision-queue
+    cron: "0 8 * * 1-5"  # 8am weekdays
+    model: sonnet
+    delivery: slack_dm
+    priority: high
+
+  weekly_recap:
+    routine: weekly-recap
+    cron: "0 16 * * 5"   # 4pm Friday
+    model: opus
+    delivery: slack_dm
+    priority: high
+
+  dev_goals_checkin:
+    routine: dev-goals-checkin
+    cron: "0 9 * * 3"    # 9am Wednesday
+    model: sonnet
+    delivery: slack_dm
+    priority: medium
+
+  stakeholder_pulse:
+    routine: stakeholder-pulse
+    cron: "0 9 * * 1"    # 9am Monday
+    model: sonnet
+    delivery: slack_dm
+    priority: medium
+
+  governance_tracker:
+    routine: governance-tracker
+    cron: "30 8 * * 1"   # 8:30am Monday
+    model: sonnet
+    delivery: slack_dm
+    priority: medium
+
+  staff_pulse_monthly:
+    routine: staff-reviews
+    cron: "0 8 1 * *"    # 8am, 1st of month
+    mode: monthly
+    model: opus
+    delivery: slack_dm
+    priority: medium
+
+  staff_review_quarterly:
+    routine: staff-reviews
+    cron: "0 8 1 1,4,7,10 *"  # 8am, 1st of Jan/Apr/Jul/Oct
+    mode: quarterly
+    model: opus
+    delivery: slack_dm
+    priority: medium
+
+  budget_review:
+    routine: budget-review
+    cron: "0 9 1-7 * 3"  # 9am, first Wednesday of month
+    model: sonnet
+    delivery: slack_dm
+    priority: medium
+
+  # meeting_prep: manual only for now. Future: calendar polling, 30min before Tier 1 meetings.
+
+delivery:
+  slack_dm:
+    channel: "@ben"
+    format: markdown
+    thread_replies: true
+    link_to_chat: true
