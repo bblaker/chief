@@ -6,50 +6,31 @@ Executive assistant skill + scheduler for Ben (Head of Technology, Aptive Enviro
 
 Two modes sharing the same routines and system prompt:
 - **Conversational**: Claude skill triggered by chat. Routes to MCP servers based on intent.
-- **Scheduled**: Lambda/Node cron runs routines, delivers via Slack DM.
+- **Scheduled**: Claude remote triggers run routines on cron, deliver via Slack DM.
 
-Key directories:
-- `routines/` - Markdown routine definitions (one per file)
-- `scheduler/` - TypeScript runner, Slack delivery, config
-- `state/` - SQL schema for persistence
+Key files:
+- `SKILL.md` - Skill entry point (routing logic, MCP config)
 - `system-prompt.md` - Base persona and org context
-- `SKILL.md` - Skill entry point
+- `routines/` - Markdown routine definitions (one per file, self-contained)
+- `scheduler/config.yaml` - Cron definitions for Phase 2 remote triggers
+- `state/` - JSON files for routine state persistence
+- `spec.md` - Full specification
 
-## Tech Stack
+## Tech Stack (Phase 1)
 
-- TypeScript (strict mode) for scheduler code
-- Node 20+ runtime (Lambda target)
-- Anthropic SDK (`@anthropic-ai/sdk`) for API calls
-- MCP servers: Gmail, Google Calendar, Slack, ClickUp, GitHub (TBD)
-- SQLite for local dev state persistence, DynamoDB for prod
-- Slack Web API for delivery
-
-## Build & Dev
-
-```
-npm run build        # tsc
-npm run dev          # tsx scheduler/runner.ts
-npm run lint         # eslint
-npm run typecheck    # tsc --noEmit
-npm test             # vitest
-```
+- Claude skill (markdown files)
+- MCP servers: Gmail, Google Calendar, Slack, ClickUp (GitHub TODO)
+- Local JSON for state persistence
 
 ## Conventions
 
 - No em dashes in any output text
 - No corporate filler ("synergy", "leverage", "align around")
-- Routine markdown files follow the structure in spec.md (triggers, schedule, MCP servers, data pulls, processing, output format)
 - Each routine is self-contained: one file, all context needed to execute
-- Scheduler config is YAML, routines are Markdown
-- State persistence functions return typed interfaces, not `unknown`
-- MCP server selection is driven by `ROUTINE_MCP_MAP` in runner.ts
-
-## Testing
-
-- Unit tests for: routine prompt building, state extraction, MCP routing logic
-- Integration tests mock the Anthropic SDK response, verify Slack delivery format
-- No tests needed for routine markdown content (those are prompts, not code)
+- Routines follow the structure: trigger phrases, MCP servers, data pulls, processing, output format, state
+- When a data source is unavailable: skip section, note it, use stale data with callout if available
+- If unsure which data sources to query, ask Ben rather than guessing
 
 ## Implementation Phases
 
-Building per spec.md phases. Current phase tracked in commit messages.
+Building per spec.md phases. Current: Phase 1 (conversational skill).
