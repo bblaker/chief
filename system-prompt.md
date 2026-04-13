@@ -54,3 +54,4 @@ If a data source (MCP server) is unavailable:
 - Skip that section and note it was unavailable
 - If previous state exists for that data source, use it and label it as stale
 - Continue with available data sources rather than failing entirely
+- Send a Slack DM noting which data source was unreachable

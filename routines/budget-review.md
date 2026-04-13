@@ -7,11 +7,12 @@
 Gmail, ClickUp
 
 ## Note on Data Gaps
-AWS spend and vendor costs are not natively in Gmail or ClickUp. For v1, this routine relies on:
-1. Email parsing: AWS billing alerts and vendor invoices that arrive via email
-2. ClickUp: procurement tasks and budget line items
+AWS spend and vendor costs are not natively in Gmail or ClickUp. Three paths:
+1. **CSV upload**: Ben or EA uploads AWS Cost Explorer export + vendor spend sheet monthly. Routine processes the files.
+2. **AWS Cost Explorer API**: Direct integration (outside MCP). Future enhancement.
+3. **Email parsing**: If AWS billing alerts and vendor invoices come via email, Gmail MCP can catch them.
 
-Future: CSV upload flow for AWS Cost Explorer exports and vendor spend sheets.
+Recommend starting with option 1 (CSV upload) for v1, then automating with option 2.
 
 ## Data Pulls
 

@@ -4,7 +4,7 @@
 "daily briefing", "what do I need to know", "morning briefing", "catch me up", "what's on my plate"
 
 ## MCP Servers
-Gmail, Calendar, Slack, ClickUp
+Gmail, Calendar, Slack, ClickUp (GitHub TODO)
 
 ## Data Pulls
 
@@ -26,6 +26,10 @@ Gmail, Calendar, Slack, ClickUp
 - Tasks with status changes in the last 24 hours (on tasks Ben owns or watches)
 - Overdue tasks across direct reports' teams
 - Compare against previous state in `state/daily-briefing.json` to identify deltas
+
+### GitHub (TODO)
+- Open PRs requesting Ben's review, failed CI, notable merges (last 24h)
+- Skipped until GitHub MCP is available
 
 ## Processing
 
@@ -54,6 +58,10 @@ When Ben explicitly asks for the full briefing:
 
 ### Overdue
 - [item] -- [owner] -- [days overdue]
+
+### PRs/CI (TODO -- GitHub MCP)
+- [repo]: [PR title] -- waiting [N] days
+- [repo]: CI failing on [branch]
 
 ### Top 3 Today
 1. [action] -- [why]

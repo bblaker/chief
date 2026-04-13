@@ -4,7 +4,7 @@
 "how's [person] doing", "staff pulse", "team performance", "prep me for my 1:1 with [person]", "quarterly review prep"
 
 ## MCP Servers
-ClickUp, Slack, Calendar
+ClickUp, Slack, Calendar (GitHub TODO)
 
 ## Direct Reports Tracked
 - Chase Pierce: VP of Software Engineering
@@ -18,6 +18,7 @@ ClickUp, Slack, Calendar
 
 ### Data Pulls
 - ClickUp: task completion per person (last 30 days vs. prior 30 days)
+- GitHub (TODO): PR volume, review turnaround (technical leads). Skipped until GitHub MCP is available.
 - Slack: activity patterns (volume, responsiveness)
 - Calendar: 1:1 attendance with Ben
 

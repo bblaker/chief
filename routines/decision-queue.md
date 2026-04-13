@@ -4,7 +4,7 @@
 "who's waiting on me", "what's blocked on me", "decision queue", "what do I need to unblock", "my blockers"
 
 ## MCP Servers
-Gmail, Slack, ClickUp
+Gmail, Slack, ClickUp (GitHub TODO)
 
 ## Cross-Routine Awareness
 If the Daily Briefing ran earlier today, reference items already surfaced there rather than repeating them in full. Focus on net-new items and deeper decision context (who's stalled, what's the downstream impact).
@@ -19,6 +19,10 @@ If the Daily Briefing ran earlier today, reference items already surfaced there 
 
 ### Slack
 - DMs and @mentions with unanswered questions or requests
+
+### GitHub (TODO)
+- PRs awaiting Ben's review
+- Skipped until GitHub MCP is available
 
 ## Processing
 

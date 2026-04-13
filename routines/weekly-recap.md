@@ -4,7 +4,7 @@
 "weekly recap", "what shipped this week", "week in review", "summarize the week", "draft Jon update"
 
 ## MCP Servers
-Gmail, Calendar, Slack, ClickUp
+Gmail, Calendar, Slack, ClickUp (GitHub TODO)
 
 ## Data Pulls
 
@@ -14,6 +14,10 @@ Gmail, Calendar, Slack, ClickUp
 
 ### Calendar
 - Meeting volume and distribution for the week
+
+### GitHub (TODO)
+- Merged PRs, releases/deploys
+- Skipped until GitHub MCP is available
 
 ### Gmail + Slack
 - Scan for new commitments made during the week. Look for phrases like "I'll", "we'll", "action item", "by Friday", "will do", "committed to"
