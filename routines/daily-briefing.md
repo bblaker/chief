@@ -26,6 +26,11 @@ Gmail, Calendar, Slack, ClickUp (GitHub TODO)
 - Tasks with status changes in the last 24 hours (on tasks Ben owns or watches)
 - Overdue tasks across direct reports' teams
 - Compare against previous state in `state/daily-briefing.json` to identify deltas
+- **Migration RAID snapshot** (list ID: `901113562085` in Technology > Product Roadmap > Migration RAID):
+  - Total open items (any non-closed/done status)
+  - New items created in the last 24 hours
+  - Items completed/closed in the last 24 hours
+  - Use `clickup_filter_tasks` with list_ids `["901113562085"]` for open items, and `clickup_search` with location subcategories filter + created_date_from/to for new items, and task_statuses `["done", "closed"]` + sort by updated_at desc for recently completed
 
 ### GitHub (TODO)
 - Open PRs requesting Ben's review, failed CI, notable merges (last 24h)
@@ -58,6 +63,10 @@ When Ben explicitly asks for the full briefing:
 
 ### Overdue
 - [item] -- [owner] -- [days overdue]
+
+### Migration RAID
+- Open: [N] | New (24h): [N] | Closed (24h): [N]
+- [If new or closed items exist, list them briefly]
 
 ### PRs/CI (TODO -- GitHub MCP)
 - [repo]: [PR title] -- waiting [N] days
